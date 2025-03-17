@@ -2914,6 +2914,17 @@ impl GitPanel {
                                                 Tooltip::simple(tooltip, cx)
                                             }
                                         })
+                                        .key_binding({
+                                            let focus_handle = editor_focus_handle.clone();
+
+                                            ui::KeyBinding::for_action_in(
+                                                &Commit,
+                                                &focus_handle,
+                                                window,
+                                                cx,
+                                            )
+                                            .map(|kb| kb.size(rems_from_px(10.)))
+                                        })
                                         .disabled(!can_commit || self.modal_open)
                                         .on_click({
                                             cx.listener(move |this, _: &ClickEvent, window, cx| {
