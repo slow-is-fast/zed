@@ -56,7 +56,7 @@ use notifications::{
 pub use pane::*;
 pub use pane_group::*;
 pub use persistence::{
-    model::{ItemId, LocalPaths, SerializedWorkspaceLocation},
+    model::{ItemId, LocalPaths, PaneId, SerializedWorkspaceLocation},
     WorkspaceDb, DB as WORKSPACE_DB,
 };
 use persistence::{
@@ -473,7 +473,8 @@ pub fn register_project_item<I: ProjectItem>(cx: &mut App) {
             let project_entry_id: Option<ProjectEntryId> =
                 project_item.read_with(cx, project::ProjectItem::entry_id)?;
             let build_workspace_item = Box::new(|window: &mut Window, cx: &mut Context<Pane>| {
-                Box::new(cx.new(|cx| I::for_project_item(project, project_item, window, cx)))
+                let pane = cx.entity();
+                Box::new(cx.new(|cx| I::for_project_item(project, &pane, project_item, window, cx)))
                     as Box<dyn ItemHandle>
             }) as Box<_>;
             Ok((project_entry_id, build_workspace_item))
@@ -3049,8 +3050,8 @@ impl Workspace {
             return item;
         }
 
-        let item =
-            cx.new(|cx| T::for_project_item(self.project().clone(), project_item, window, cx));
+        let item = cx
+            .new(|cx| T::for_project_item(self.project().clone(), &pane, project_item, window, cx));
         let item_id = item.item_id();
         let mut destination_index = None;
         pane.update(cx, |pane, cx| {
@@ -4597,7 +4598,7 @@ impl Workspace {
                 )
             };
 
-            SerializedPane::new(items, active, pinned_count)
+            SerializedPane::new(None, items, active, pinned_count)
         }
 
         fn build_serialized_pane_group(
@@ -4691,6 +4692,11 @@ impl Workspace {
             None
         };
 
+        let workspace = self
+            .weak_handle()
+            .upgrade()
+            .expect("updrading a weak reference in &self context");
+
         if let Some(location) = location {
             let breakpoints = self.project.update(cx, |project, cx| {
                 project.breakpoint_store().read(cx).all_breakpoints(cx)
@@ -4711,8 +4717,10 @@ impl Workspace {
                 breakpoints,
                 window_id: Some(window.window_handle().window_id().as_u64()),
             };
-            return window.spawn(cx, async move |_| {
-                persistence::DB.save_workspace(serialized_workspace).await
+            return window.spawn(cx, async move |cx| {
+                persistence::DB
+                    .save_workspace(workspace, serialized_workspace, cx)
+                    .await
             });
         }
         Task::ready(())
@@ -8708,6 +8716,7 @@ mod tests {
 
             fn for_project_item(
                 _project: Entity<Project>,
+                _pane: &Entity<Pane>,
                 _item: Entity<Self::Item>,
                 _: &mut Window,
                 cx: &mut Context<Self>,
@@ -8779,6 +8788,7 @@ mod tests {
 
             fn for_project_item(
                 _project: Entity<Project>,
+                _pane: &Entity<Pane>,
                 _item: Entity<Self::Item>,
                 _: &mut Window,
                 cx: &mut Context<Self>,
@@ -8822,6 +8832,7 @@ mod tests {
 
             fn for_project_item(
                 _project: Entity<Project>,
+                _pane: &Entity<Pane>,
                 _item: Entity<Self::Item>,
                 _: &mut Window,
                 cx: &mut Context<Self>,
